@@ -15,6 +15,17 @@ mnist <- dslabs::read_mnist()
 names(mnist)
 ### [1] "train" "test"
 
+# extract a train set of images for pretty display
+preview_indices <- sample(1:nrow(mnist$train$images), 100)
+preview_digits <- mnist$train$images[preview_indices, ]
+## preview the train images
+par(mfrow = c(10, 10), mar=c(1, 1, 1, 1))
+layout(matrix(seq_len(nrow(preview_digits)), 10, 10, byrow = FALSE))
+for(i in seq_len(nrow(preview_digits))) {
+  image(matrix(preview_digits[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
+}
+dim(mnist$test$images)
+
 # initialize h2o
 h2o.no_progress() # turn off progress bar, which can slow down relatively trivial example problems
 h2o.init(max_mem_size = "4G")  # initialize H2O instance
@@ -46,11 +57,11 @@ dim(features)
 ### [1] 60000   784
 
 # Train an autoencoder
-ae1 <- h2o.deeplearning(
+ae_tanh_10 <- h2o.deeplearning(
   x = seq_along(features),     # limiting inputs just to the images (no labels)
   training_frame = features,   # actual data input
   autoencoder = TRUE,          # Autoencoder
-  hidden = 2,                  # size of coded layer
+  hidden = 10,                  # size of coded layer
   activation = 'Tanh',         # hyperbolic tangent activation
   sparse = TRUE,               # MNIST data is VERY sparse
   ignore_const_cols = FALSE
@@ -60,21 +71,46 @@ ae1 <- h2o.deeplearning(
 ## Dropping those columns doesn't feel good and causes issues in reconstructing the input
 
 # Extract the deep features
-ae1_codings <- h2o.deepfeatures(ae1, features, layer = 1)
-dim(ae1_codings)
-### [1] 60000   2
+ae_tanh_10_codings <- h2o.deepfeatures(ae_tanh_10, features, layer = 1)
+dim(ae_tanh_10_codings)
+### [1] 60000   10
 
-## Whoa! We went from 784 features down to 2
+## Whoa! We went from 784 features down to 10
 ## But is that the optimal solution? (hint: No)
 
 ## Let's take a look at how it does
-ae1_model <- h2o.getModel(ae1@model_id)
-ae1_result <- predict(ae_model, ae_test_images)
+ae_tanh_10_model <- h2o.getModel(ae_tanh_10@model_id)
+ae_tanh_10_result <- predict(ae_tanh_10_model, ae_test_images)
 
-ae1_combine <- rbind(ae_sampled_digits,
-                    as.matrix(ae_result))
-visualize_results(ae1_combine)
+ae_tanh_10_combine <- rbind(ae_sampled_digits,
+                            as.matrix(ae_tanh_10_result))
+par(mfrow = c(test_N, 2), mar=c(1, 1, 1, 1))
+layout(matrix(seq_len(nrow(ae_tanh_10_combine)), test_N, 2, byrow = FALSE))
+for(i in seq_len(nrow(ae_tanh_10_combine))) {
+  image(matrix(ae_tanh_10_combine[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
+}
 ## 
+
+
+# Train an autoencoder
+ae_rect_10 <- h2o.deeplearning(
+  x = seq_along(features),     # limiting inputs just to the images (no labels)
+  training_frame = features,   # actual data input
+  autoencoder = TRUE,          # Autoencoder
+  hidden = 10,                  # size of coded layer
+  activation = 'Rectifier',
+  sparse = TRUE,               # MNIST data is VERY sparse
+  ignore_const_cols = FALSE
+)
+ae_rect_10_model <- h2o.getModel(ae_rect_10@model_id)
+ae_rect_10_result <- predict(ae_rect_10_model, ae_test_images)
+ae_rect_10_combine <- rbind(ae_sampled_digits,
+                            as.matrix(ae_rect_10_result))
+par(mfrow = c(test_N, 2), mar=c(1, 1, 1, 1))
+layout(matrix(seq_len(nrow(ae_rect_10_combine)), test_N, 2, byrow = FALSE))
+for(i in seq_len(nrow(ae_rect_10_combine))) {
+  image(matrix(ae_rect_10_combine[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
+}
 
 ## Let's try searching for the optimal model
 
@@ -98,7 +134,7 @@ ae_grid <- h2o.grid(
   hyper_params = hyper_grid,
   sparse = TRUE,
   ignore_const_cols = FALSE,
-  seed = 96
+  seed = 123
 )
 
 # Print grid details
@@ -189,6 +225,30 @@ ae_multiple_hidden_layers_result <- predict(ae_multiple_hidden_layers_model, ae_
 ae_multiple_hidden_layers_combine <- rbind(ae_sampled_digits,
                          as.matrix(ae_multiple_hidden_layers_result))
 visualize_results(ae_multiple_hidden_layers_combine)
+
+
+# Try with number of hidden features as PCA
+ae_164 <- h2o.deeplearning(
+  x = seq_along(features),     # limiting inputs just to the images (no labels)
+  training_frame = features,   # actual data input
+  autoencoder = TRUE,          # Autoencoder
+  hidden = 164, # size of hidden layers
+  activation = 'Tanh',         # hyperbolic tangent activation
+  sparse = TRUE,               # MNIST data is VERY sparse
+  ignore_const_cols = FALSE
+)
+ae_164_model <- h2o.getModel(ae_164@model_id)
+ae_164_result <- predict(ae_164_model, ae_test_images)
+
+ae_164_combine <- rbind(ae_sampled_digits,
+                        as.matrix(ae_164_result))
+
+par(mfrow = c(test_N, 2), mar=c(1, 1, 1, 1))
+layout(matrix(seq_len(nrow(ae_164_combine)), test_N, 2, byrow = FALSE))
+for(i in seq_len(nrow(ae_164_combine))) {
+  image(matrix(ae_164_combine[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
+}
+
 
 ## Shutdown H2O instance
 ##h2o.shutdown

@@ -13,10 +13,6 @@ mnist <- dslabs::read_mnist()
 names(mnist)
 ### [1] "train" "test"
 
-# initialize h2o
-h2o.no_progress() # turn off progress bar, which can slow down relatively trivial example problems
-h2o.init(max_mem_size = "4G")  # initialize H2O instance
-
 # extract a test set of images for later
 test_N <- 5
 ae_index <- sample(1:nrow(mnist$test$images), test_N)
@@ -27,10 +23,21 @@ layout(matrix(seq_len(nrow(ae_sampled_digits)), test_N, 1, byrow = FALSE))
 for(i in seq_len(nrow(ae_sampled_digits))) {
   image(matrix(ae_sampled_digits[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
 }
+
+
+# initialize h2o
+h2o.no_progress() # turn off progress bar, which can slow down relatively trivial example problems
+h2o.init(max_mem_size = "4G")  # initialize H2O instance
+
 ## convert sample images to h2o
 ae_test_images <- as.h2o(ae_sampled_digits)
 
-# OMPARE TO Principal Component Analysis
+# Convert mnist images to an h2o input data set (features)
+features <- as.h2o(mnist$train$images)
+dim(features)
+### [1] 60000   784
+
+# Perform Principal Component Analysis
 pca <- h2o.prcomp(
   training_frame = features,
   pca_method = "GramSVD",
@@ -77,44 +84,17 @@ for(vector in eigenvectors){
 
 pca_model <- h2o.getModel(pca@model_id)
 pca_result <- h2o.predict(pca_model, newdata = ae_test_images)
-
 pca_result_matrix <- as.matrix(pca_result[subset])
-
-pca_reconstructed <- matrix_eigenvectors %*% t(pca_result_matrix)
-
-## Plot the results
-par(mfrow = c(test_N, 2), mar=c(1, 1, 1, 1))
-layout(matrix(seq_len(test_N*2), test_N, 2, byrow = FALSE))
-for(i in seq_len(nrow(ae_sampled_digits))) {
-  image(matrix(ae_sampled_digits[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
-}
-for(j in seq_len(ncol(pca_reconstructed))) {
-  image(matrix(pca_reconstructed[ ,j], 28, 28)[, 28:1], xaxt="n", yaxt="n")
-}
-
-# Now compare to linear autoencoder
-ae_compare_pca <- h2o.deeplearning(
-  x = seq_along(features),     # limiting inputs just to the images (no labels)
-  training_frame = features,   # actual data input
-  autoencoder = TRUE,          # Autoencoder
-  hidden = length(subset),     # size of coded layer
-  activation = 'Rectifier',
-  sparse = TRUE,               # MNIST data is VERY sparse
-  ignore_const_cols = FALSE,
-  stopping_metric = "MSE"
-)
-ae_compare_pca_model <- h2o.getModel(ae_compare_pca@model_id)
-ae_compare_pca_result <- predict(ae_compare_pca_model, ae_test_images)
-
-ae_compare_pca_combine <- rbind(ae_sampled_digits,
-                                as.matrix(ae_compare_pca_result))
+pca_reconstructed <- pca_result_matrix %*% t(matrix_eigenvectors)
+pca_combined <- rbind(ae_sampled_digits,
+                      pca_reconstructed)
 
 ## Plot the results
 par(mfrow = c(test_N, 2), mar=c(1, 1, 1, 1))
 layout(matrix(seq_len(test_N*2), test_N, 2, byrow = FALSE))
-for(i in seq_len(nrow(ae_compare_pca_combine))) {
-  image(matrix(ae_compare_pca_combine[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
+for(i in seq_len(nrow(pca_combined))) {
+  image(matrix(pca_combined[i, ], 28, 28)[, 28:1], xaxt="n", yaxt="n")
 }
 
 ## Shutdown H2O instance
-##h2o.shutdown
+# # h2o.shutdown()
